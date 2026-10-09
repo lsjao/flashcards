@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DL Flashcards</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1c1c1a;--mute:#6b6a64;--line:#dcdad2;--acc:#1f5eff;--accink:#fff;--ok:#1a7f4b;--mid:#a96b00;--bad:#c53030;--chip:#eceae2}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1e1e1c;--ink:#ecebe6;--mute:#9a988f;--line:#34332f;--acc:#6b9bff;--accink:#0d0d0c;--ok:#4ac98a;--mid:#e0b04a;--bad:#f07a7a;--chip:#2a2a27}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0}
+#clock{font-size:13px;color:var(--mute)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--mute)}
+.bar{height:6px;background:var(--chip);border-radius:3px;overflow:hidden;margin-bottom:12px}
+.bar i{display:block;height:100%;background:var(--ok);width:0}
+.modes{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+button,select{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--card);padding:8px 12px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:var(--acc)}
+.btn.on{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+.btn.primary{background:var(--acc);color:var(--accink);border-color:var(--acc);width:100%;padding:12px;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:12px}
+.meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--mute);margin-bottom:10px}
+.badge{background:var(--chip);border-radius:6px;padding:2px 8px;color:var(--ink)}
+.q{font-size:18px;font-weight:600}
+.a{margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);white-space:normal}
+code{background:var(--chip);padding:1px 5px;border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em}
+.grades{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.g{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 6px;cursor:pointer;text-align:center}
+.g small{display:block;color:var(--mute);font-size:12px}
+.g.m{border-color:var(--bad);color:var(--bad)}
+.g.a{border-color:var(--mid);color:var(--mid)}
+.g.g{border-color:var(--ok);color:var(--ok)}
+.hint{font-size:12px;color:var(--mute);text-align:center;margin-top:8px}
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin-bottom:12px}
+summary{cursor:pointer;font-weight:600}
+.deck{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.deck label{flex:1;display:flex;gap:8px;align-items:center;cursor:pointer}
+.deck small{color:var(--mute);white-space:nowrap}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.chip{display:inline-flex;gap:6px;align-items:center;background:var(--chip);border-radius:16px;padding:4px 10px;font-size:13px;cursor:pointer}
+footer{display:flex;gap:8px;flex-wrap:wrap;font-size:13px}
+.empty{text-align:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>DL Flashcards</h1><div id="clock"></div></header>
+<div class="stats" id="stats"></div>
+<div class="bar"><i id="bar"></i></div>
+<div class="modes" id="modes"></div>
+<div id="stage"></div>
+<details id="settings"><summary>Decks and settings</summary><div id="fbody"></div></details>
+<footer id="foot"></footer>
+</div>
+<script src="cards.js"></script>
+<script>
+(function(){
+'use strict';
+var DECKS=window.DECKS||[];
+var KEY='dlflash.v1';
+var TL={c:'Concept',f:'Formula',x:'Compute',d:'Diagram',v:'Compare'};
+var BASE=[0,10,45,180,480,720];
+var ALL=[];
+DECKS.forEach(function(d){d.cards.forEach(function(c,i){ALL.push({id:d.id+':'+i,deck:d.id,dn:d.name,t:c[0],q:c[1],a:c[2],p:c[3]?1:0});});});
+var S=load();
+var cur=null,shown=false,lastId=null,sess={n:0,g:0};
+
+function load(){
+  var d={cards:{},plan:null,pace:1,sel:null,types:null,prio:false,mode:'due',inter:false};
+  var r=null;
+  try{r=JSON.parse(localStorage.getItem(KEY));}catch(e){}
+  if(r&&typeof r==='object'){for(var k in d){if(r[k]!==undefined)d[k]=r[k];}}
+  return d;
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
+function pace(){return S.pace||1;}
+function mins(b){return BASE[b]*pace();}
+function human(m){
+  if(m<1)return 'now';
+  if(m<60)return Math.round(m)+'m';
+  var h=m/60;
+  return (h<10?Math.round(h*10)/10:Math.round(h))+'h';
+}
+function inSel(c){
+  if(S.sel&&S.sel.indexOf(c.deck)<0)return false;
+  if(S.types&&S.types.indexOf(c.t)<0)return false;
+  if(S.prio&&!c.p)return false;
+  return true;
+}
+function stat(c){
+  var s=S.cards[c.id];
+  if(!s)return 'new';
+  if(s.b>=5)return 'done';
+  return s.d<=Date.now()?'due':'wait';
+}
+function pool(){return ALL.filter(inSel);}
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function byDue(a,b){return S.cards[a.id].d-S.cards[b.id].d;}
+
+function pick(){
+  var P=pool(),cand=[];
+  if(S.mode==='cram'){
+    cand=P.slice().sort(function(a,b){return ((S.cards[a.id]||{}).l||0)-((S.cards[b.id]||{}).l||0);});
+  }else if(S.mode==='weak'){
+    cand=P.filter(function(c){var s=S.cards[c.id];return s&&s.b>=1&&s.b<=2;}).sort(byDue);
+  }else{
+    var dues=P.filter(function(c){return stat(c)==='due';}).sort(byDue);
+    var news=P.filter(function(c){return stat(c)==='new';});
+    cand=dues.concat(S.inter?shuffle(news):news);
+  }
+  if(cand.length>1&&cand[0].id===lastId){cand.push(cand.shift());}
+  return cand[0]||null;
+}
+
+function nextBox(b,g){
+  if(g==='m')return 1;
+  if(g==='a')return Math.max(1,b);
+  return b===0?2:Math.min(5,b+1);
+}
+function grade(g){
+  if(!cur||!shown)return;
+  var now=Date.now();
+  var st=S.cards[cur.id]||{b:0,m:0,d:0,l:0};
+  var nb=nextBox(st.b,g);
+  if(g==='m')st.m=(st.m||0)+1;
+  st.b=nb;st.d=now+mins(nb)*60000;st.l=now;
+  S.cards[cur.id]=st;
+  sess.n++;if(g==='g')sess.g++;
+  save();
+  lastId=cur.id;
+  cur=pick();shown=false;
+  render();
+}
+function skip(){
+  if(!cur)return;
+  lastId=cur.id;
+  var c=pick();
+  cur=c;shown=false;
+  render();
+}
+
+function counts(P){
+  var o={new:0,due:0,wait:0,done:0},nextDue=null,now=Date.now();
+  P.forEach(function(c){
+    var s=stat(c);o[s]++;
+    if(s==='wait'){var d=S.cards[c.id].d;if(nextDue===null||d<nextDue)nextDue=d;}
+  });
+  o.eta=nextDue===null?null:Math.max(0,(nextDue-now)/60000);
+  return o;
+}
+
+function renderStats(){
+  var P=pool(),c=counts(P);
+  document.getElementById('stats').innerHTML=
+    '<div class="stat"><b>'+c.new+'</b><span>New</span></div>'+
+    '<div class="stat"><b>'+c.due+'</b><span>Due now</span></div>'+
+    '<div class="stat"><b>'+c.wait+'</b><span>Waiting</span></div>'+
+    '<div class="stat"><b>'+c.done+'</b><span>Done</span></div>';
+  document.getElementById('bar').style.width=(P.length?100*c.done/P.length:0)+'%';
+}
+function renderModes(){
+  var m=[['due','Due + new'],['weak','Weak boxes'],['cram','Cram all']];
+  document.getElementById('modes').innerHTML=m.map(function(x){
+    return '<button class="btn'+(S.mode===x[0]?' on':'')+'" data-mode="'+x[0]+'">'+x[1]+'</button>';
+  }).join('')+'<span style="flex:1"></span><span style="font-size:13px;color:var(--mute);align-self:center">This session: '+sess.n+' reviewed'+(sess.n?', '+Math.round(100*sess.g/sess.n)+'% got it':'')+'</span>';
+}
+function renderStage(){
+  var el=document.getElementById('stage');
+  if(!cur){
+    var P=pool(),c=counts(P);
+    var msg;
+    if(!P.length)msg='No cards match the current filters.';
+    else if(S.mode==='weak')msg='No cards in boxes 1 or 2. Nice.';
+    else if(c.wait>0)msg='Nothing due right now. Next card due in about '+human(c.eta)+'.';
+    else msg='All cards in this selection are done.';
+    el.innerHTML='<div class="card empty"><p>'+msg+'</p>'+(P.length&&S.mode!=='cram'?'<button class="btn primary" data-mode="cram">Study anyway (cram all)</button>':'')+'</div>';
+    return;
+  }
+  var s=S.cards[cur.id];
+  var meta='<div class="meta"><span>'+esc(cur.dn)+'</span><span class="badge">'+TL[cur.t]+'</span>'+(cur.p?'<span class="badge">High yield</span>':'')+'<span>'+(s?'Box '+Math.min(s.b,5):'New')+'</span></div>';
+  var html='<div class="card">'+meta+'<div class="q">'+fmt(cur.q)+'</div>';
+  if(shown){
+    var b=s?s.b:0;
+    html+='<div class="a">'+fmt(cur.a)+'</div></div>'+
+      '<div class="grades">'+
+      '<button class="g m" data-g="m">Missed<small>1 · back in '+human(mins(nextBox(b,'m')))+'</small></button>'+
+      '<button class="g a" data-g="a">Almost<small>2 · '+human(mins(nextBox(b,'a')))+'</small></button>'+
+      '<button class="g g" data-g="g">Got it<small>3 · '+human(mins(nextBox(b,'g')))+'</small></button></div>';
+  }else{
+    html+='</div><button class="btn primary" data-act="show">Show answer</button>'+
+      '<div class="hint">Say the answer out loud first. Space = show, 1/2/3 = grade, S = skip.</div>';
+  }
+  el.innerHTML=html;
+}
+function renderSettings(){
+  var h='';
+  h+='<div class="row"><button class="btn" data-act="all">Select all</button><button class="btn" data-act="none">Select none</button></div>';
+  DECKS.forEach(function(d){
+    var P=ALL.filter(function(c){return c.deck===d.id;});
+    var c=counts(P);
+    var on=!S.sel||S.sel.indexOf(d.id)>=0;
+    h+='<div class="deck"><label><input type="checkbox" data-deck="'+d.id+'"'+(on?' checked':'')+'> '+esc(d.name)+'</label><small>'+c.done+'/'+P.length+' done · '+c.due+' due</small></div>';
+  });
+  h+='<div class="row">';
+  Object.keys(TL).forEach(function(t){
+    var on=!S.types||S.types.indexOf(t)>=0;
+    h+='<label class="chip"><input type="checkbox" data-type="'+t+'"'+(on?' checked':'')+'> '+TL[t]+'</label>';
+  });
+  h+='</div><div class="row">'+
+    '<label class="chip"><input type="checkbox" id="prio"'+(S.prio?' checked':'')+'> High-yield only</label>'+
+    '<label class="chip"><input type="checkbox" id="inter"'+(S.inter?' checked':'')+'> Interleave new cards across topics</label>'+
+    '<label class="chip">Pace <select id="pace"><option value="1"'+(pace()===1?' selected':'')+'>12 hours</option><option value="0.5"'+(pace()===0.5?' selected':'')+'>6 hours</option><option value="0.25"'+(pace()===0.25?' selected':'')+'>3 hours</option></select></label></div>'+
+    '<div style="font-size:13px;color:var(--mute)">Boxes (12 h pace): Missed returns in 10 m. Got it moves a card up: 45 m, 3 h, 8 h, then done. Pass 1: new cards by topic. Pass 2: turn on interleaving. Final pass: Weak boxes.</div>';
+  document.getElementById('fbody').innerHTML=h;
+}
+function renderFoot(){
+  document.getElementById('foot').innerHTML=
+    '<button class="btn" data-act="export">Export progress</button>'+
+    '<label class="btn">Import progress<input type="file" id="imp" accept="application/json" style="display:none"></label>'+
+    '<button class="btn" data-act="clock">'+(S.plan?'Reset plan clock':'Start 12h plan clock')+'</button>'+
+    '<button class="btn" data-act="reset">Reset all progress</button>';
+}
+function renderClock(){
+  var el=document.getElementById('clock');
+  if(!S.plan){el.textContent=ALL.length+' cards';return;}
+  var m=(Date.now()-S.plan)/60000,h=Math.floor(m/60);
+  el.textContent='Plan clock '+h+'h '+Math.floor(m%60)+'m of 12h · '+ALL.length+' cards';
+}
+function render(){renderStats();renderModes();renderStage();renderClock();}
+function renderAll(){render();renderSettings();renderFoot();}
+
+function setSel(){
+  var boxes=document.querySelectorAll('input[data-deck]'),on=[];
+  boxes.forEach(function(b){if(b.checked)on.push(b.getAttribute('data-deck'));});
+  S.sel=on.length===DECKS.length?null:on;
+}
+function setTypes(){
+  var boxes=document.querySelectorAll('input[data-type]'),on=[];
+  boxes.forEach(function(b){if(b.checked)on.push(b.getAttribute('data-type'));});
+  S.types=on.length===Object.keys(TL).length?null:on;
+}
+function refilter(){save();lastId=null;cur=pick();shown=false;render();}
+
+document.addEventListener('click',function(e){
+  var t=e.target.closest('[data-mode],[data-g],[data-act]');
+  if(!t)return;
+  if(t.hasAttribute('data-mode')){S.mode=t.getAttribute('data-mode');save();lastId=null;cur=pick();shown=false;render();return;}
+  if(t.hasAttribute('data-g')){grade(t.getAttribute('data-g'));return;}
+  var a=t.getAttribute('data-act');
+  if(a==='show'){shown=true;render();}
+  else if(a==='all'){S.sel=null;S.types=null;save();renderSettings();refilter();}
+  else if(a==='none'){S.sel=[];save();renderSettings();refilter();}
+  else if(a==='export'){
+    var blob=new Blob([JSON.stringify(S)],{type:'application/json'});
+    var u=URL.createObjectURL(blob),l=document.createElement('a');
+    l.href=u;l.download='flashcard-progress.json';document.body.appendChild(l);l.click();l.remove();URL.revokeObjectURL(u);
+  }
+  else if(a==='clock'){S.plan=S.plan?null:Date.now();save();renderFoot();renderClock();}
+  else if(a==='reset'){
+    if(confirm('Erase all saved progress on this device?')){S.cards={};sess={n:0,g:0};save();lastId=null;cur=pick();shown=false;renderAll();}
+  }
+});
+document.addEventListener('change',function(e){
+  var t=e.target;
+  if(t.hasAttribute('data-deck')){setSel();refilter();renderSettings();}
+  else if(t.hasAttribute('data-type')){setTypes();refilter();}
+  else if(t.id==='prio'){S.prio=t.checked;refilter();}
+  else if(t.id==='inter'){S.inter=t.checked;refilter();}
+  else if(t.id==='pace'){S.pace=parseFloat(t.value)||1;save();render();}
+  else if(t.id==='imp'&&t.files&&t.files[0]){
+    var fr=new FileReader();
+    fr.onload=function(){
+      try{
+        var r=JSON.parse(fr.result);
+        if(r&&r.cards&&confirm('Replace current progress with the imported file?')){
+          for(var k in r){S[k]=r[k];}
+          save();lastId=null;cur=pick();shown=false;renderAll();
+        }
+      }catch(err){alert('That file could not be read.');}
+    };
+    fr.readAsText(t.files[0]);
+  }
+});
+document.addEventListener('keydown',function(e){
+  var tag=(e.target.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='select'||e.metaKey||e.ctrlKey||e.altKey)return;
+  var k=e.key;
+  if(!cur)return;
+  if(k===' '||k==='Enter'){
+    if(!shown){shown=true;render();}
+    e.preventDefault();
+  }else if(shown&&(k==='1'||k==='2'||k==='3')){
+    grade(k==='1'?'m':k==='2'?'a':'g');
+  }else if(k==='s'||k==='S'){skip();}
+});
+
+cur=pick();
+renderAll();
+setInterval(function(){
+  if(!cur){cur=pick();}
+  renderStats();renderClock();
+  if(!cur)renderStage();
+},30000);
+})();
+</script>
+</body>
+</html>
