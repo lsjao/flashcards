@@ -47,6 +47,15 @@ summary{cursor:pointer;font-weight:600}
 .chip{display:inline-flex;gap:6px;align-items:center;background:var(--chip);border-radius:16px;padding:4px 10px;font-size:13px;cursor:pointer}
 footer{display:flex;gap:8px;flex-wrap:wrap;font-size:13px}
 .empty{text-align:center;color:var(--mute)}
+.topics{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.tp{border:1px solid var(--line);background:var(--card);border-radius:16px;padding:5px 11px;font-size:13px;cursor:pointer}
+.tp small{color:var(--mute);margin-left:4px}
+.tp.on{background:var(--acc);color:var(--accink);border-color:var(--acc)}
+.tp.on small{color:var(--accink);opacity:.8}
+.cbar{background:var(--card);border:1px solid var(--bad);border-radius:12px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.cbar b{font-size:18px}
+.cbar .bar{margin:8px 0 0}
+.cbar .bar i{background:var(--bad)}
 </style>
 </head>
 <body>
@@ -54,6 +63,8 @@ footer{display:flex;gap:8px;flex-wrap:wrap;font-size:13px}
 <header><h1>DL Flashcards</h1><div id="clock"></div></header>
 <div class="stats" id="stats"></div>
 <div class="bar"><i id="bar"></i></div>
+<div class="topics" id="topics"></div>
+<div id="cbar"></div>
 <div class="modes" id="modes"></div>
 <div id="stage"></div>
 <details id="settings"><summary>Decks and settings</summary><div id="fbody"></div></details>
@@ -67,13 +78,16 @@ var DECKS=window.DECKS||[];
 var KEY='dlflash.v1';
 var TL={c:'Concept',f:'Formula',x:'Compute',d:'Diagram',v:'Compare'};
 var BASE=[0,10,45,180,480,720];
+var CR=[0,2,8,25,60,60];
+var CRUNCH_MIN=120,LEARN_MIN=90;
+var SHORT={sup:'Supervised',mlp:'MLP',cnn:'CNN',rnn:'RNN',tf:'Transformers',reg:'Regularization',ag:'Autograd',eff1:'Efficiency 1',eff2:'Efficiency 2',agents:'Agents',llm:'LLM Tasks'};
 var ALL=[];
-DECKS.forEach(function(d){d.cards.forEach(function(c,i){ALL.push({id:d.id+':'+i,deck:d.id,dn:d.name,t:c[0],q:c[1],a:c[2],p:c[3]?1:0});});});
+DECKS.forEach(function(d){d.cards.forEach(function(c,i){ALL.push({id:d.id+':'+i,deck:d.id,dn:d.name,t:c[0],q:c[1],a:c[2],p:c[3]?1:0,i:ALL.length});});});
 var S=load();
 var cur=null,shown=false,lastId=null,sess={n:0,g:0};
 
 function load(){
-  var d={cards:{},plan:null,pace:1,sel:null,types:null,prio:false,mode:'due',inter:false};
+  var d={cards:{},plan:null,pace:1,sel:null,types:null,prio:false,mode:'due',inter:false,crunch:null};
   var r=null;
   try{r=JSON.parse(localStorage.getItem(KEY));}catch(e){}
   if(r&&typeof r==='object'){for(var k in d){if(r[k]!==undefined)d[k]=r[k];}}
@@ -83,7 +97,11 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function fmt(s){return esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code>$1</code>').replace(/\n/g,'<br>');}
 function pace(){return S.pace||1;}
-function mins(b){return BASE[b]*pace();}
+function crunching(){return S.mode==='crunch'&&!!S.crunch;}
+function doneB(){return S.crunch?4:5;}
+function mins(b){return crunching()?CR[b]:BASE[b]*pace();}
+function elapsed(){return S.crunch?(Date.now()-S.crunch)/60000:0;}
+function phase(){var e=elapsed();return e<LEARN_MIN?'learn':e<CRUNCH_MIN?'review':'over';}
 function human(m){
   if(m<1)return 'now';
   if(m<60)return Math.round(m)+'m';
@@ -99,7 +117,7 @@ function inSel(c){
 function stat(c){
   var s=S.cards[c.id];
   if(!s)return 'new';
-  if(s.b>=5)return 'done';
+  if(s.b>=doneB())return 'done';
   return s.d<=Date.now()?'due':'wait';
 }
 function pool(){return ALL.filter(inSel);}
@@ -108,7 +126,14 @@ function byDue(a,b){return S.cards[a.id].d-S.cards[b.id].d;}
 
 function pick(){
   var P=pool(),cand=[];
-  if(S.mode==='cram'){
+  if(S.mode==='crunch'&&S.crunch){
+    var cd=P.filter(function(c){return stat(c)==='due';}).sort(byDue);
+    var weak=P.filter(function(c){return stat(c)==='wait';}).sort(function(a,b){return (S.cards[a.id].b-S.cards[b.id].b)||byDue(a,b);});
+    if(phase()==='learn'){
+      var nw=P.filter(function(c){return stat(c)==='new';}).sort(function(a,b){return (b.p-a.p)||(a.i-b.i);});
+      cand=cd.concat(nw,weak);
+    }else cand=cd.concat(weak);
+  }else if(S.mode==='cram'){
     cand=P.slice().sort(function(a,b){return ((S.cards[a.id]||{}).l||0)-((S.cards[b.id]||{}).l||0);});
   }else if(S.mode==='weak'){
     cand=P.filter(function(c){var s=S.cards[c.id];return s&&s.b>=1&&s.b<=2;}).sort(byDue);
@@ -124,7 +149,7 @@ function pick(){
 function nextBox(b,g){
   if(g==='m')return 1;
   if(g==='a')return Math.max(1,b);
-  return b===0?2:Math.min(5,b+1);
+  return b===0?2:Math.min(doneB(),b+1);
 }
 function grade(g){
   if(!cur||!shown)return;
@@ -167,8 +192,27 @@ function renderStats(){
     '<div class="stat"><b>'+c.done+'</b><span>Done</span></div>';
   document.getElementById('bar').style.width=(P.length?100*c.done/P.length:0)+'%';
 }
+function renderCbar(){
+  var el=document.getElementById('cbar');
+  if(!crunching()){el.innerHTML='';return;}
+  var e=elapsed(),left=Math.max(0,CRUNCH_MIN-e),P=pool();
+  var hy=P.filter(function(c){return stat(c)==='new'&&c.p;}).length,rest=P.filter(function(c){return stat(c)==='new'&&!c.p;}).length;
+  var ph=phase(),lab=ph==='learn'?'Learn: high-yield new cards first':ph==='review'?'Final review: no new cards, weakest first':'Time is up';
+  el.innerHTML='<div class="cbar"><b>'+Math.floor(left/60)+'h '+Math.floor(left%60)+'m left</b> · '+lab+
+    '<div style="font-size:13px;color:var(--mute);margin-top:2px">Unseen: '+hy+' high-yield, '+rest+' other. Missed returns in 2m, then 8m, 25m, done after 4 good passes.</div>'+
+    '<div class="bar"><i style="width:'+Math.min(100,100*e/CRUNCH_MIN)+'%"></i></div></div>';
+}
+function renderTopics(){
+  var h='<button class="tp'+(!S.sel?' on':'')+'" data-topic="*">All</button>';
+  DECKS.forEach(function(d){
+    var c=counts(ALL.filter(function(x){return x.deck===d.id;}));
+    var on=!S.sel||S.sel.indexOf(d.id)>=0;
+    h+='<button class="tp'+(S.sel&&on?' on':'')+'" data-topic="'+d.id+'">'+esc(SHORT[d.id]||d.name)+'<small>'+(c.due+c.new)+'</small></button>';
+  });
+  document.getElementById('topics').innerHTML=h;
+}
 function renderModes(){
-  var m=[['due','Due + new'],['weak','Weak boxes'],['cram','Cram all']];
+  var m=[['due','Due + new'],['weak','Weak boxes'],['cram','Cram all'],['crunch','2h Crunch']];
   document.getElementById('modes').innerHTML=m.map(function(x){
     return '<button class="btn'+(S.mode===x[0]?' on':'')+'" data-mode="'+x[0]+'">'+x[1]+'</button>';
   }).join('')+'<span style="flex:1"></span><span style="font-size:13px;color:var(--mute);align-self:center">This session: '+sess.n+' reviewed'+(sess.n?', '+Math.round(100*sess.g/sess.n)+'% got it':'')+'</span>';
@@ -179,6 +223,7 @@ function renderStage(){
     var P=pool(),c=counts(P);
     var msg;
     if(!P.length)msg='No cards match the current filters.';
+    else if(crunching()&&phase()==='over')msg='Two hours are up. Good luck.';
     else if(S.mode==='weak')msg='No cards in boxes 1 or 2. Nice.';
     else if(c.wait>0)msg='Nothing due right now. Next card due in about '+human(c.eta)+'.';
     else msg='All cards in this selection are done.';
@@ -226,6 +271,7 @@ function renderFoot(){
   document.getElementById('foot').innerHTML=
     '<button class="btn" data-act="export">Export progress</button>'+
     '<label class="btn">Import progress<input type="file" id="imp" accept="application/json" style="display:none"></label>'+
+    (S.crunch?'<button class="btn" data-act="endcrunch">End crunch timer</button>':'')+
     '<button class="btn" data-act="clock">'+(S.plan?'Reset plan clock':'Start 12h plan clock')+'</button>'+
     '<button class="btn" data-act="reset">Reset all progress</button>';
 }
@@ -235,7 +281,7 @@ function renderClock(){
   var m=(Date.now()-S.plan)/60000,h=Math.floor(m/60);
   el.textContent='Plan clock '+h+'h '+Math.floor(m%60)+'m of 12h · '+ALL.length+' cards';
 }
-function render(){renderStats();renderModes();renderStage();renderClock();}
+function render(){renderTopics();renderCbar();renderStats();renderModes();renderStage();renderClock();}
 function renderAll(){render();renderSettings();renderFoot();}
 
 function setSel(){
@@ -251,9 +297,26 @@ function setTypes(){
 function refilter(){save();lastId=null;cur=pick();shown=false;render();}
 
 document.addEventListener('click',function(e){
-  var t=e.target.closest('[data-mode],[data-g],[data-act]');
+  var t=e.target.closest('[data-mode],[data-g],[data-act],[data-topic]');
   if(!t)return;
-  if(t.hasAttribute('data-mode')){S.mode=t.getAttribute('data-mode');save();lastId=null;cur=pick();shown=false;render();return;}
+  if(t.hasAttribute('data-topic')){
+    var id=t.getAttribute('data-topic');
+    if(id==='*')S.sel=null;
+    else if(!S.sel)S.sel=[id];
+    else{
+      var ix=S.sel.indexOf(id);
+      if(ix>=0)S.sel.splice(ix,1);else S.sel.push(id);
+      if(S.sel.length===DECKS.length)S.sel=null;
+    }
+    save();lastId=null;cur=pick();shown=false;renderAll();return;
+  }
+  if(t.hasAttribute('data-mode')){
+    var nm=t.getAttribute('data-mode');
+    if(nm==='crunch'&&!S.crunch){
+      if(!confirm('Start the 2 hour crunch timer now? Pick your topics first. Intervals shrink to minutes and high-yield cards come first.'))return;
+      S.crunch=Date.now();
+    }
+    S.mode=nm;save();lastId=null;cur=pick();shown=false;render();return;}
   if(t.hasAttribute('data-g')){grade(t.getAttribute('data-g'));return;}
   var a=t.getAttribute('data-act');
   if(a==='show'){shown=true;render();}
@@ -264,6 +327,7 @@ document.addEventListener('click',function(e){
     var u=URL.createObjectURL(blob),l=document.createElement('a');
     l.href=u;l.download='flashcard-progress.json';document.body.appendChild(l);l.click();l.remove();URL.revokeObjectURL(u);
   }
+  else if(a==='endcrunch'){S.crunch=null;if(S.mode==='crunch')S.mode='due';save();lastId=null;cur=pick();shown=false;renderAll();}
   else if(a==='clock'){S.plan=S.plan?null:Date.now();save();renderFoot();renderClock();}
   else if(a==='reset'){
     if(confirm('Erase all saved progress on this device?')){S.cards={};sess={n:0,g:0};save();lastId=null;cur=pick();shown=false;renderAll();}
@@ -307,7 +371,7 @@ cur=pick();
 renderAll();
 setInterval(function(){
   if(!cur){cur=pick();}
-  renderStats();renderClock();
+  renderStats();renderClock();renderCbar();
   if(!cur)renderStage();
 },30000);
 })();
