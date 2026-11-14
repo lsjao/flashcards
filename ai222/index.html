@@ -150,6 +150,55 @@ kbd{font-family:"JetBrains Mono",monospace;font-size:.72em;border:1px solid curr
   .katex-display{font-size:.9em}
   .answer,.why{padding:.8rem .8rem .8rem 1rem}
 }
+
+/* ---------- Crunch mode ---------- */
+.hdr-actions{display:flex;gap:var(--s-2);align-items:center;flex:none}
+.crunch-btn{min-height:44px;border-radius:999px;border:0;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:0 1rem;cursor:pointer;white-space:nowrap}
+.crunch-btn:hover{filter:brightness(1.08)}
+.cbar{position:sticky;top:0;z-index:5;background:var(--bg);padding:var(--s-1) 0;margin-bottom:var(--s-1);border-bottom:1px solid var(--line)}
+.cbar-top{display:flex;flex-wrap:wrap;gap:var(--s-1);align-items:center;justify-content:space-between}
+.clock{display:flex;gap:var(--s0);align-items:baseline;font-variant-numeric:tabular-nums}
+.clock .big{font-size:var(--t2);font-weight:700;line-height:1}
+.clock .small{color:var(--muted);font-size:var(--t-1)}
+.clock .over{color:var(--again)}
+.cbar .chip{min-height:36px}
+.tbar{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin-top:var(--s-2)}
+.tbar i{display:block;height:100%;background:var(--accent);width:0}
+.steps{display:flex;gap:var(--s-3);margin-top:var(--s-2);overflow-x:auto;scrollbar-width:none}
+.steps::-webkit-scrollbar{display:none}
+.step{flex:1 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:.2rem .7rem;font-size:var(--t-1);cursor:pointer;display:flex;gap:.35rem;align-items:center;min-height:34px}
+.step .dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--topic,var(--accent))}
+.step[aria-current="true"]{border-color:var(--topic,var(--accent));box-shadow:0 0 0 1px var(--topic,var(--accent));font-weight:700}
+.step.done{opacity:.6}
+.step.done::after{content:"✓";color:var(--good);font-weight:700}
+.sheet{background:var(--surface);border:1px solid var(--line);border-top:5px solid var(--topic,var(--accent));border-radius:var(--radius);box-shadow:var(--shadow);padding:var(--s1)}
+.sheet h2{font-size:var(--t2);margin:0 0 var(--s-2);line-height:1.2}
+.sheet .lead{color:var(--muted);margin:0 0 var(--s0);font-size:var(--t-1)}
+.sheet h3{font-size:var(--t1);margin:var(--s1) 0 var(--s-2);color:var(--topic,var(--accent))}
+.sheet ul{padding-left:1.15rem;margin:0}
+.sheet li{margin:.3rem 0}
+.sheet p{margin:.4rem 0}
+.sheet table{width:100%;border-collapse:collapse;font-size:.9rem;margin:.4rem 0;display:block;overflow-x:auto}
+.sheet th,.sheet td{border-bottom:1px solid var(--line);padding:.4rem .5rem;text-align:left;vertical-align:top}
+.sheet th{background:var(--surface-2);font-size:var(--t-1);text-transform:uppercase;letter-spacing:.05em}
+.trap{background:var(--why-bg);border-left:4px solid var(--again);border-radius:var(--radius-s);padding:.7rem .9rem;margin-top:var(--s1)!important}
+.cta{margin-top:var(--s1)}
+.plan{width:100%;border-collapse:collapse;margin:var(--s0) 0}
+.plan td,.plan th{padding:.5rem;border-bottom:1px solid var(--line);text-align:left}
+.plan td:last-child,.plan th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.crunch-on .tips{display:none}
+@media (max-width:560px){
+  .crunch-btn{padding:0 .8rem;font-size:.9rem}
+  .sheet{padding:var(--s0)}
+  .clock .big{font-size:1.45rem}
+  .sheet table{display:block;overflow:visible}
+  .sheet tbody{display:block}
+  .sheet tr{display:block;border-bottom:1px solid var(--line);padding:.45rem 0}
+  .sheet tr:first-child{display:none}
+  .sheet td,.sheet th{display:block;border:0;padding:.1rem 0;background:none;text-transform:none;letter-spacing:0;font-size:.92rem}
+  .sheet td:first-child{font-weight:700;color:var(--topic,var(--accent))}
+  .plan td:last-child,.plan th:last-child{text-align:left}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -160,11 +209,13 @@ kbd{font-family:"JetBrains Mono",monospace;font-size:.72em;border:1px solid curr
       <h1>AI 222 Reviewer</h1>
       <p class="sub">Optimization · Regularization · Object Detection · Segmentation. Answers, rationales and proofs, built from your study notes and cross-checked against the linked sources.</p>
     </div>
+    <div class="hdr-actions"><button class="crunch-btn" id="crunchBtn" title="Timed 60-minute review of all 4 topics">⚡ 1-hr Crunch</button>
     <button class="icon-btn" id="theme" aria-label="Toggle dark mode" title="Toggle dark mode">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
-    </button>
+    </button></div>
   </header>
 
+  <div id="normal">
   <section class="panel" aria-label="Filters">
     <div class="row" id="topics"><span class="label">Topic</span></div>
     <div class="row" id="kinds"><span class="label">Question type</span></div>
@@ -192,9 +243,12 @@ kbd{font-family:"JetBrains Mono",monospace;font-size:.72em;border:1px solid curr
     </ul>
     <p class="foot">Sources: AI 222 slides (Prof. Rowel Atienza, UP) and your study notes; Goodfellow et al., <i>Deep Learning</i> Ch. 8; Ruder, "An overview of gradient descent optimization algorithms"; Uijlings et al., "Selective Search" (IJCV 2013); Lin et al., "Focal Loss" (ICCV 2017); FCOS (ICCV 2019); mrlooi/rotated_maskrcnn; course SAM2 demo notebook.</p>
   </section>
+  </div>
+  <div id="crunch" hidden></div>
 </div>
 
 <script src="data/opt.js"></script>
+<script src="data/crunch.js"></script>
 <script src="data/reg.js"></script>
 <script src="data/det.js"></script>
 <script src="data/seg.js"></script>
@@ -368,7 +422,7 @@ kbd{font-family:"JetBrains Mono",monospace;font-size:.72em;border:1px solid curr
 
   // ---------- keyboard ----------
   document.addEventListener("keydown", e => {
-    if (listMode || e.target.matches("input,textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (listMode || document.body.classList.contains("crunch-on") || e.target.matches("input,textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key===" " || e.key==="Enter"){ e.preventDefault(); revealed ? go(1) : reveal(); }
     else if (e.key==="ArrowRight") go(1);
     else if (e.key==="ArrowLeft") go(-1);
@@ -388,9 +442,11 @@ kbd{font-family:"JetBrains Mono",monospace;font-size:.72em;border:1px solid curr
     },{passive:true});
   }
 
+  window.__AI222 = {ALL, TOPICS, KINDS, typeset, store, save, refresh: () => rebuild()};
   rebuild();
   window.addEventListener("load", ()=>render());
 })();
 </script>
+<script src="crunch.js"></script>
 </body>
 </html>
